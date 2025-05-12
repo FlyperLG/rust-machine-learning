@@ -111,6 +111,10 @@ impl Grid {
         }
         return false;
     }
+
+    fn is_full(&self) -> bool {
+        self.grid.iter().all(|row| row.iter().all(|&c| c != '-'))
+    }
 }
 
 enum Player {
@@ -220,7 +224,12 @@ fn main() {
             println!("{} has won the game.", player.name());
             break;
         }
-        player_index += 1;
-        player_index = player_index % 2;
+
+        if grid.is_full() {
+            grid.print();
+            println!("The game is a draw!")
+        }
+
+        player_index = (player_index + 1) % 2;
     }
 }
