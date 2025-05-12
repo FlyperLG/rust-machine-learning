@@ -17,11 +17,12 @@ impl Grid {
     }
 
     fn set_value(&mut self, row: usize, col: usize, char: char) -> bool {
-        if self.grid[row][col] != '-' {
-            return false;
+        if row > 2 || col > 2 || self.grid[row][col] != '-' {
+            false
+        } else {
+            self.grid[row][col] = char;
+            true
         }
-        self.grid[row][col] = char;
-        return true;
     }
 
     fn check_game_over(&self) -> bool {
@@ -131,14 +132,16 @@ impl Player {
                     Err(_) => return None,
                 };
 
-                println!("{} please select a col by typing 1/2/3.", name);
+                println!("{} please select a col by typing A/B/C.", name);
                 let mut col: String = String::new();
                 io::stdin()
                     .read_line(&mut col)
                     .expect("Failed to read line");
-                let col: usize = match col.trim().parse::<usize>() {
-                    Ok(num) => num - 1,
-                    Err(_) => return None,
+                let col: usize = match col.trim().to_uppercase().as_str() {
+                    "A" => 0,
+                    "B" => 1,
+                    "C" => 2,
+                    _ => return None,
                 };
                 return Some((row, col));
             }
@@ -200,14 +203,14 @@ fn main() {
                 if grid.set_value(row, col, player.display_char()) {
                     break;
                 }
+            }
 
-                if let Player::ConsolePlayer {
-                    name,
-                    display_char: _,
-                } = player
-                {
-                    println!("{} please select a valid field.", name);
-                }
+            if let Player::ConsolePlayer {
+                name,
+                display_char: _,
+            } = player
+            {
+                println!("{} please select a valid field.", name);
             }
         }
 
