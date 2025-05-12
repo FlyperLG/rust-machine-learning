@@ -1,3 +1,4 @@
+use rand::Rng;
 use std::io;
 
 struct Grid {
@@ -6,7 +7,7 @@ struct Grid {
 
 impl Grid {
     fn print(&self) {
-        println!("  A   B   C");
+        println!("\n  A   B   C");
         for (index, row) in self.grid.iter().enumerate() {
             println!("{} {} | {} | {}", index + 1, row[0], row[1], row[2]);
             if index < row.len() - 1 {
@@ -113,6 +114,7 @@ impl Grid {
 
 enum Player {
     ConsolePlayer { name: String, display_char: char },
+    RandomPlayer { name: String, display_char: char },
 }
 
 impl Player {
@@ -140,18 +142,34 @@ impl Player {
                 };
                 return Some((row, col));
             }
+            Self::RandomPlayer {
+                name: _,
+                display_char: _,
+            } => {
+                let row: usize = rand::rng().random_range(0..=2);
+                let col: usize = rand::rng().random_range(0..=2);
+                return Some((row, col));
+            }
         };
     }
 
-    fn symbol(&self) -> char {
+    fn display_char(&self) -> char {
         match self {
             Self::ConsolePlayer { display_char, .. } => *display_char,
+            Self::RandomPlayer {
+                name: _,
+                display_char,
+            } => *display_char,
         }
     }
 
     fn name(&self) -> &str {
         match self {
             Self::ConsolePlayer { name, .. } => name,
+            Self::RandomPlayer {
+                name,
+                display_char: _,
+            } => name,
         }
     }
 }
@@ -166,7 +184,7 @@ fn main() {
             name: String::from("Player1"),
             display_char: 'X',
         },
-        Player::ConsolePlayer {
+        Player::RandomPlayer {
             name: String::from("Player2"),
             display_char: 'O',
         },
@@ -176,10 +194,19 @@ fn main() {
     loop {
         grid.print();
         let player = &players[player_index];
-        match player {
-            Player::ConsolePlayer { display_char, .. } => {
-                if let Some((row, col)) = player.get_position() {
-                    grid.set_value(row, col, *display_char);
+
+        loop {
+            if let Some((row, col)) = player.get_position() {
+                if grid.set_value(row, col, player.display_char()) {
+                    break;
+                }
+
+                if let Player::ConsolePlayer {
+                    name,
+                    display_char: _,
+                } = player
+                {
+                    println!("{} please select a valid field.", name);
                 }
             }
         }
