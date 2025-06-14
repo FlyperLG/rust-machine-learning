@@ -1,140 +1,41 @@
-use std::{
-    fmt::Display,
-    ops::{AddAssign, Neg, Sub, SubAssign},
-};
+mod dataloader;
+use crate::dataloader::MnistDataloader;
 
-use ndarray::{Array, Array2, LinalgScalar, ScalarOperand, arr2};
-use num_traits::One;
+use ndarray::{Array, Array2, ArrayView1};
+use num_traits::{One, Zero};
 use rand_distr::{Distribution, StandardNormal};
 use rust_poly_net::{Float64, MlScalar};
 
 fn main() {
-    let x = arr2(&[
-        // a
-        [
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-        ],
-        // b
-        [
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-        ],
-        // c
-        [
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-        ],
-    ]);
-    let labels = arr2(&[
-        [
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-        ],
-        [
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-            Float64 { value: 0. },
-        ],
-        [
-            Float64 { value: 0. },
-            Float64 { value: 0. },
-            Float64 { value: 1. },
-        ],
-    ]);
-    let mut w1 = generate_weights(30, 5);
-    let mut w2 = generate_weights(5, 3);
+    let mut w1 = generate_weights(28 * 28, 20);
+    let mut w2 = generate_weights(20, 10);
 
-    train(x, labels, &mut w1, &mut w2, 0.1, 10000000);
+    let mut train_dataloader = MnistDataloader::new("./data/mnist");
+    train_dataloader.load_data().unwrap();
+    let train_data = train_dataloader.train_data;
+    let train_labels = one_hot_encode::<f64>(&train_dataloader.train_labels.view(), 10);
+    train(train_data, train_labels, &mut w1, &mut w2, 0.001, 10000000);
 }
 
-fn sigmoid<T>(x: &Array2<T>) -> Array2<T>
+fn one_hot_encode<T>(labels: &ArrayView1<u8>, num_classes: usize) -> Array2<T>
 where
+    T: Clone + Zero + One,
+{
+    let batch_size = labels.len();
+    let mut one_hot = Array2::zeros((batch_size, num_classes));
+
+    for (i, &label_index) in labels.iter().enumerate() {
+        assert!(
+            (label_index as usize) < num_classes,
+            "Label index {} is out of bounds for {} classes",
+            label_index,
+            num_classes
+        );
+        one_hot[[i, label_index as usize]] = T::one();
+    }
+    one_hot
+}
+
 fn sigmoid<T: MlScalar>(x: &Array2<T>) -> Array2<T> {
     x.mapv(|v| {
         let v = v.max(T::from(-709.0).unwrap()).min(T::from(709.0).unwrap());
@@ -168,7 +69,8 @@ fn generate_weights<T: MlScalar>(x: usize, y: usize) -> Array2<T> {
 
 fn loss<T: MlScalar>(prediction: &Array2<T>, labels: &Array2<T>) -> T {
     let diff = prediction - labels;
-    let loss = diff.mapv(|v| v.powi(2)).sum() / T::from(labels.len()).unwrap();
+    let num_samples = T::from(labels.shape()[0]).unwrap();
+    let loss = diff.mapv(|v| v.powi(2)).sum() / num_samples;
     loss
 }
 
