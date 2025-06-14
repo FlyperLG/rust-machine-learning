@@ -7,22 +7,42 @@ use std::{
 use ndarray::ScalarOperand;
 use rand_distr::num_traits::{One, Zero};
 
+pub trait FromNumber {
+    fn from_f64(num: f64) -> Self;
+    fn from_f32(num: f32) -> Self;
+}
+
+pub trait Exponential {
+    fn exp(self) -> Self;
+    fn powi(self, n: i32) -> Self;
+}
+
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
 pub struct Float64 {
     pub value: f64,
 }
 
-impl Float64 {
-    pub fn exp(&self) -> Float64 {
+impl Exponential for Float64 {
+    fn exp(self) -> Float64 {
         Float64 {
             value: self.value.exp(),
         }
     }
 
-    pub fn powi(&self, n: i32) -> Float64 {
+    fn powi(self, n: i32) -> Float64 {
         Float64 {
             value: self.value.powi(n),
         }
+    }
+}
+
+impl FromNumber for Float64 {
+    fn from_f64(num: f64) -> Self {
+        Float64 { value: num }
+    }
+
+    fn from_f32(num: f32) -> Self {
+        Float64 { value: num as f64 }
     }
 }
 
