@@ -1,7 +1,7 @@
 mod dataloader;
 use crate::dataloader::MnistDataloader;
 
-use ndarray::{Array, Array2, ArrayView1};
+use ndarray::{Array, Array2, ArrayView1, s};
 use num_traits::{One, Zero};
 use rand_distr::{Distribution, StandardNormal};
 use rust_poly_net::{Float64, MlScalar};
@@ -14,7 +14,7 @@ fn main() {
     train_dataloader.load_data().unwrap();
     let train_data = train_dataloader.train_data;
     let train_labels = one_hot_encode::<f64>(&train_dataloader.train_labels.view(), 10);
-    train(train_data, train_labels, &mut w1, &mut w2, 0.001, 10000000);
+    train(train_data, train_labels, &mut w1, &mut w2, 0.001, 1000, 64);
 }
 
 fn one_hot_encode<T>(labels: &ArrayView1<u8>, num_classes: usize) -> Array2<T>
@@ -101,14 +101,42 @@ fn train<T: MlScalar>(
     w2: &mut Array2<T>,
     lr: f64,
     epochs: i32,
+    batch_size: usize,
 ) {
+    let num_samples = x.shape()[0];
+
     for epoch in 0..epochs {
-        let (a1, a2) = forward(&x, &w1, &w2);
+        let mut epoch_loss = T::zero();
+        let mut num_batches = 0;
 
-        let l: T = loss(&a2, &labels);
+        for i in (0..num_samples).step_by(batch_size) {
+            let end = (i + batch_size).min(num_samples);
+            let x_batch = x.slice(s![i..end, ..]);
+            let labels_batch = labels.slice(s![i..end, ..]);
 
-        back_prop(&x, &a1, &a2, &labels, w1, w2, lr);
+            let (a1, a2) = forward(&x_batch.to_owned(), &w1, &w2);
 
-        println!("epochs: {} ==== loss: {}", epoch + 1, l);
+            let l: T = loss(&a2, &labels_batch.to_owned());
+
+            back_prop(
+                &x_batch.to_owned(),
+                &a1,
+                &a2,
+                &labels_batch.to_owned(),
+                w1,
+                w2,
+                lr,
+            );
+
+            epoch_loss += l;
+            num_batches += 1;
+        }
+
+        println!(
+            "Epoch: {}/{} ==== Average loss: {}",
+            epoch + 1,
+            epochs,
+            epoch_loss / T::from(num_batches).unwrap()
+        );
     }
 }
