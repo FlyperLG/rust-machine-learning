@@ -1,7 +1,7 @@
 mod dataloader;
 use crate::dataloader::MnistDataloader;
 
-use ndarray::{Array, Array2, ArrayView1, s};
+use ndarray::{Array, Array2, ArrayView1, ArrayView2, s};
 use num_traits::{One, Zero};
 use rand_distr::{Distribution, StandardNormal};
 use rust_poly_net::{Float64, MlScalar};
@@ -47,7 +47,11 @@ fn sigmoid_derivative<T: MlScalar>(x: &Array2<T>) -> Array2<T> {
     x.mapv(|v| v * (T::one() - v))
 }
 
-fn forward<T: MlScalar>(x: &Array2<T>, w1: &Array2<T>, w2: &Array2<T>) -> (Array2<T>, Array2<T>) {
+fn forward<T: MlScalar>(
+    x: &ArrayView2<T>,
+    w1: &Array2<T>,
+    w2: &Array2<T>,
+) -> (Array2<T>, Array2<T>) {
     let z1 = x.dot(w1);
     let a1 = sigmoid(&z1);
 
@@ -75,10 +79,10 @@ fn loss<T: MlScalar>(prediction: &Array2<T>, labels: &Array2<T>) -> T {
 }
 
 fn back_prop<T: MlScalar>(
-    x: &Array2<T>,
+    x: &ArrayView2<T>,
     a1: &Array2<T>,
     a2: &Array2<T>,
-    labels: &Array2<T>,
+    labels: &ArrayView2<T>,
     w1: &mut Array2<T>,
     w2: &mut Array2<T>,
     lr: f64,
@@ -114,19 +118,11 @@ fn train<T: MlScalar>(
             let x_batch = x.slice(s![i..end, ..]);
             let labels_batch = labels.slice(s![i..end, ..]);
 
-            let (a1, a2) = forward(&x_batch.to_owned(), &w1, &w2);
+            let (a1, a2) = forward(&x_batch, &w1, &w2);
 
             let l: T = loss(&a2, &labels_batch.to_owned());
 
-            back_prop(
-                &x_batch.to_owned(),
-                &a1,
-                &a2,
-                &labels_batch.to_owned(),
-                w1,
-                w2,
-                lr,
-            );
+            back_prop(&x_batch, &a1, &a2, &labels_batch, w1, w2, lr);
 
             epoch_loss += l;
             num_batches += 1;
