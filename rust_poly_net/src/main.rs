@@ -10,11 +10,11 @@ fn main() {
     let mut w1 = generate_weights(28 * 28, 20);
     let mut w2 = generate_weights(20, 10);
 
-    let mut train_dataloader = MnistDataloader::new("./data/mnist");
+    let mut train_dataloader = MnistDataloader::<f64>::new("./data/mnist");
     train_dataloader.load_data().unwrap();
     let train_data = train_dataloader.train_data;
-    let train_labels = one_hot_encode::<f64>(&train_dataloader.train_labels.view(), 10);
-    train(train_data, train_labels, &mut w1, &mut w2, 0.001, 1000, 64);
+    let train_labels = one_hot_encode(&train_dataloader.train_labels.view(), 10);
+    train(train_data, train_labels, &mut w1, &mut w2, 0.001, 10, 64);
 }
 
 fn one_hot_encode<T>(labels: &ArrayView1<u8>, num_classes: usize) -> Array2<T>
@@ -71,7 +71,7 @@ fn generate_weights<T: MlScalar>(x: usize, y: usize) -> Array2<T> {
     Array::from_shape_vec((x, y), list).unwrap()
 }
 
-fn loss<T: MlScalar>(prediction: &Array2<T>, labels: &Array2<T>) -> T {
+fn loss<T: MlScalar>(prediction: &Array2<T>, labels: &ArrayView2<T>) -> T {
     let diff = prediction - labels;
     let num_samples = T::from(labels.shape()[0]).unwrap();
     let loss = diff.mapv(|v| v.powi(2)).sum() / num_samples;
@@ -120,7 +120,7 @@ fn train<T: MlScalar>(
 
             let (a1, a2) = forward(&x_batch, &w1, &w2);
 
-            let l: T = loss(&a2, &labels_batch.to_owned());
+            let l: T = loss(&a2, &labels_batch);
 
             back_prop(&x_batch, &a1, &a2, &labels_batch, w1, w2, lr);
 

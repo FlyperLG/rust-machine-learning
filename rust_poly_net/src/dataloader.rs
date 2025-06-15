@@ -1,17 +1,19 @@
+// inspired by the mnist_reader crate located at: https://docs.rs/mnist_reader/latest/mnist_reader/
 use flate2::bufread::MultiGzDecoder;
 use ndarray::{Array1, Array2};
+use rust_poly_net::MlScalar;
 use std::{
     fs::File,
     io::{self, BufReader, Read},
 };
 
-pub struct MnistDataloader {
+pub struct MnistDataloader<T> {
     pub directory_path: String,
-    pub train_data: Array2<f64>,
+    pub train_data: Array2<T>,
     pub train_labels: Array1<u8>,
 }
 
-impl MnistDataloader {
+impl<T: MlScalar> MnistDataloader<T> {
     pub fn new(directory_path: &str) -> Self {
         MnistDataloader {
             directory_path: directory_path.to_string(),
@@ -45,7 +47,7 @@ impl MnistDataloader {
         Ok(buffer)
     }
 
-    fn read_mnist_images(file_path: &str) -> io::Result<Array2<f64>> {
+    fn read_mnist_images(file_path: &str) -> io::Result<Array2<T>> {
         let raw_bytes = Self::read_gzip(file_path)?;
 
         let num_images = u32::from_be_bytes(raw_bytes[4..8].try_into().unwrap()) as usize;
@@ -54,9 +56,9 @@ impl MnistDataloader {
         let image_size = num_rows * num_cols;
 
         let images_raw = &raw_bytes[16..];
-        let flat_data: Vec<f64> = images_raw
+        let flat_data: Vec<T> = images_raw
             .iter()
-            .map(|&byte| byte as f64 / 255.0) // Normalize each pixel
+            .map(|&byte| T::from(byte as f64).unwrap() / T::from(255.0).unwrap()) // Normalize each pixel
             .collect();
 
         let images_array = ndarray::Array::from_shape_vec((num_images, image_size), flat_data)
