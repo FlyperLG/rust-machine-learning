@@ -233,6 +233,16 @@ dependencies = [
  "num-traits",
  "rand",
  "rand_distr",
+ "softposit",
+]
+
+[[package]]
+name = "softposit"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8091c9c836e6d8cd1d510e65c4b8e7eb42b9ad876d95723cd35982e5c38f7ee1"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]

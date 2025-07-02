@@ -1,31 +1,29 @@
+mod architecture;
 mod dataloader;
-use crate::dataloader::MnistDataloader;
 
-use ndarray::{Array, Array2, ArrayView1, ArrayView2, s};
+use crate::{
+    architecture::{LinearLayer, Network, Sigmoid},
+    dataloader::MnistDataloader,
+};
+
+use ndarray::{Array, Array1, Array2, ArrayView1, ArrayView2, Axis, s};
 use num_traits::{One, Zero};
 use rand_distr::{Distribution, StandardNormal};
-use rust_poly_net::{Float64, MlScalar};
+use rust_poly_net::{Float64, MlPosit, MlScalar};
+use std::time::Instant;
 
 fn main() {
-    let mut w1 = generate_weights(28 * 28, 20);
-    let mut b1 = generate_biases(20);
-    let mut w2 = generate_weights(20, 10);
-    let mut b2 = generate_biases(10);
     let mut train_dataloader = MnistDataloader::<f64>::new("./data/mnist");
     train_dataloader.load_data().unwrap();
     let train_data = train_dataloader.train_data;
     let train_labels = one_hot_encode(&train_dataloader.train_labels.view(), 10);
-    train(
-        train_data,
-        train_labels,
-        &mut w1,
-        &mut b1,
-        &mut w2,
-        &mut b2,
-        0.001,
-        10,
-        64,
-    );
+
+    let network: Network<f64> = Network::new(vec![
+        Box::new(LinearLayer::new(28 * 28, 20, Box::new(Sigmoid::new()))),
+        Box::new(LinearLayer::new(20, 10, Box::new(Sigmoid::new()))),
+    ]);
+
+    train_model(train_data, train_labels, network, 0.001, 20, 64);
 }
 
 fn one_hot_encode<T>(labels: &ArrayView1<u8>, num_classes: usize) -> Array2<T>
@@ -47,53 +45,6 @@ where
     one_hot
 }
 
-fn sigmoid<T: MlScalar>(x: &Array2<T>) -> Array2<T> {
-    x.mapv(|v| {
-        let v = v.max(T::from(-709.0).unwrap()).min(T::from(709.0).unwrap());
-        T::one() / (T::one() + (-v).exp())
-    })
-}
-
-fn sigmoid_derivative<T: MlScalar>(x: &Array2<T>) -> Array2<T> {
-    x.mapv(|v| v * (T::one() - v))
-}
-
-fn forward<T: MlScalar>(
-    x: &ArrayView2<T>,
-    w1: &Array2<T>,
-    b1: &Array1<T>,
-    w2: &Array2<T>,
-    b2: &Array1<T>,
-) -> (Array2<T>, Array2<T>) {
-    let z1 = x.dot(w1) + b1;
-    let a1 = sigmoid(&z1);
-
-    let z2 = a1.dot(w2) + b2;
-    let a2 = sigmoid(&z2);
-
-    (a1, a2)
-}
-
-fn generate_weights<T: MlScalar>(x: usize, y: usize) -> Array2<T> {
-    let mut rng = rand::rng();
-    let mut list = Vec::with_capacity(x * y);
-    for _ in 0..(x * y) {
-        let value: f64 = StandardNormal.sample(&mut rng);
-        list.push(T::from(0.1 * value).unwrap());
-    }
-    Array::from_shape_vec((x, y), list).unwrap()
-}
-
-fn generate_biases<T: MlScalar>(x: usize) -> Array1<T> {
-    let mut rng = rand::rng();
-    let mut list = Vec::with_capacity(x);
-    for _ in 0..x {
-        let value: f64 = StandardNormal.sample(&mut rng);
-        list.push(T::from(0.1 * value).unwrap());
-    }
-    Array::from_shape_vec(x, list).unwrap()
-}
-
 fn loss<T: MlScalar>(prediction: &Array2<T>, labels: &ArrayView2<T>) -> T {
     let diff = prediction - labels;
     let num_samples = T::from(labels.shape()[0]).unwrap();
@@ -101,42 +52,10 @@ fn loss<T: MlScalar>(prediction: &Array2<T>, labels: &ArrayView2<T>) -> T {
     loss
 }
 
-fn back_prop<T: MlScalar>(
-    x: &ArrayView2<T>,
-    a1: &Array2<T>,
-    a2: &Array2<T>,
-    labels: &ArrayView2<T>,
-    w1: &mut Array2<T>,
-    b1: &mut Array1<T>,
-    w2: &mut Array2<T>,
-    b2: &mut Array1<T>,
-    lr: f64,
-) {
-    let d2 = a2 - labels;
-    let d2_sigmoid = &d2 * &sigmoid_derivative(a2);
-    let d1_sigmoid = d2_sigmoid.dot(&w2.t()) * sigmoid_derivative(a1);
-
-    let w2_update = a1.t().dot(&d2_sigmoid);
-    let w1_update = x.t().dot(&d1_sigmoid);
-
-    let b2_update = d2_sigmoid.sum_axis(Axis(0));
-    let b1_update = d1_sigmoid.sum_axis(Axis(0));
-
-    let lr = T::from(lr).unwrap();
-    *w2 -= &(&w2_update * lr);
-    *w1 -= &(&w1_update * lr);
-    *b2 -= &(b2_update * lr);
-    *b1 -= &(b1_update * lr);
-}
-}
-
-fn train<T: MlScalar>(
+fn train_model<T: MlScalar>(
     x: Array2<T>,
     labels: Array2<T>,
-    w1: &mut Array2<T>,
-    b1: &mut Array1<T>,
-    w2: &mut Array2<T>,
-    b2: &mut Array1<T>,
+    mut model: Network<T>,
     lr: f64,
     epochs: i32,
     batch_size: usize,
@@ -146,27 +65,30 @@ fn train<T: MlScalar>(
     for epoch in 0..epochs {
         let mut epoch_loss = T::zero();
         let mut num_batches = 0;
-
+        println!("Starting epoch {}/{} now.", epoch + 1, epochs);
+        let epoch_timer = Instant::now();
         for i in (0..num_samples).step_by(batch_size) {
             let end = (i + batch_size).min(num_samples);
             let x_batch = x.slice(s![i..end, ..]);
             let labels_batch = labels.slice(s![i..end, ..]);
 
-            let (a1, a2) = forward(&x_batch, &w1, &b1, &w2, &b2);
+            let (activations, _) = model.forward(&x_batch);
 
-            let l: T = loss(&a2, &labels_batch);
+            let l: T = loss(&activations[activations.len() - 1], &labels_batch);
 
-            back_prop(&x_batch, &a1, &a2, &labels_batch, w1, b1, w2, b2, lr);
+            model.backward(&activations, &labels_batch, T::from(lr).unwrap());
 
             epoch_loss += l;
             num_batches += 1;
         }
 
+        let duration = epoch_timer.elapsed();
         println!(
-            "Epoch: {}/{} ==== Average loss: {}",
+            "Epoch: {}/{} ==== Average loss: {} ==== Time taken: {:?}",
             epoch + 1,
             epochs,
-            epoch_loss / T::from(num_batches).unwrap()
+            epoch_loss / T::from(num_batches).unwrap(),
+            duration
         );
     }
 }
