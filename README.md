@@ -56,9 +56,3 @@ The `rust_poly_net` framework is designed to make it easy to switch between floa
 
 - **src/main.rs**  
   Example executable that demonstrates how to use the framework: loads MNIST data, builds a network, and trains a model.
-
-- **docs/future_improvements.md**  
-  Notes and suggestions for future enhancements, including model accuracy, performance, and code structure improvements.
-
-- **docs/performance_through_simd.md**  
-  Discussion and tips on optimizing performance, especially when using custom number types, including SIMD strategies.
