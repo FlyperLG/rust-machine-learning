@@ -1,24 +1,25 @@
 mod architecture;
 mod dataloader;
+mod number_representations;
 
 use crate::{
     architecture::{LinearLayer, Network, Sigmoid},
     dataloader::MnistDataloader,
+    number_representations::Posit32,
 };
 
-use ndarray::{Array, Array1, Array2, ArrayView1, ArrayView2, Axis, s};
+use ndarray::{Array2, ArrayView1, ArrayView2, s};
 use num_traits::{One, Zero};
-use rand_distr::{Distribution, StandardNormal};
 use rust_poly_net::{Float64, MlPosit, MlScalar};
 use std::time::Instant;
 
 fn main() {
-    let mut train_dataloader = MnistDataloader::<f64>::new("./data/mnist");
+    let mut train_dataloader = MnistDataloader::<Posit32>::new("./data/mnist");
     train_dataloader.load_data().unwrap();
     let train_data = train_dataloader.train_data;
     let train_labels = one_hot_encode(&train_dataloader.train_labels.view(), 10);
 
-    let network: Network<f64> = Network::new(vec![
+    let network: Network<Posit32> = Network::new(vec![
         Box::new(LinearLayer::new(28 * 28, 20, Box::new(Sigmoid::new()))),
         Box::new(LinearLayer::new(20, 10, Box::new(Sigmoid::new()))),
     ]);

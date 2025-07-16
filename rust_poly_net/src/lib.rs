@@ -1,7 +1,7 @@
 use ndarray::{LinalgScalar, ScalarOperand};
 use num_traits::{Num, NumCast, ToPrimitive};
 use rand_distr::num_traits::{One, Zero};
-use softposit::{P32, P32E2};
+use softposit::P32;
 use std::{
     f64,
     fmt::{self, Debug, Display},
