@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use ndarray::{Array, Array1, Array2, ArrayView2};
+use rand::{SeedableRng, rngs::StdRng};
 use rand_distr::{Distribution, StandardNormal};
 use rust_poly_net::MlScalar;
 
@@ -74,7 +75,7 @@ impl<T: MlScalar> LinearLayer<T> {
     }
 
     fn generate_weights(x: usize, y: usize) -> Array2<T> {
-        let mut rng = rand::rng();
+        let mut rng = StdRng::seed_from_u64(69);
         let mut list = Vec::with_capacity(x * y);
         for _ in 0..(x * y) {
             let value: f64 = StandardNormal.sample(&mut rng);
@@ -84,7 +85,7 @@ impl<T: MlScalar> LinearLayer<T> {
     }
 
     fn generate_biases(x: usize) -> Array1<T> {
-        let mut rng = rand::rng();
+        let mut rng = StdRng::seed_from_u64(42);
         let mut list = Vec::with_capacity(x);
         for _ in 0..x {
             let value: f64 = StandardNormal.sample(&mut rng);
