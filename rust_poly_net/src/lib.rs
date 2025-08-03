@@ -26,6 +26,7 @@ pub trait MlScalar:
     + Display
     + Debug
     + AIFloat
+    + PartialOrd
 {
 }
 

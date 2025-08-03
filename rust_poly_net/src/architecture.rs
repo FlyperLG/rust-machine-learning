@@ -157,3 +157,27 @@ impl<T: MlScalar> Activation for Sigmoid<T> {
         activated_input.mapv(|v| v * (T::one() - v))
     }
 }
+
+pub struct ReLu<T: MlScalar> {
+    _marker: PhantomData<T>,
+}
+
+impl<T: MlScalar> ReLu<T> {
+    pub fn new() -> Self {
+        Self {
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T: MlScalar> Activation for ReLu<T> {
+    type Scalar = T;
+
+    fn activate(&self, input: &Array2<Self::Scalar>) -> Array2<Self::Scalar> {
+        input.mapv(|v| if v > T::zero() { v } else { T::zero() })
+    }
+
+    fn derivative(&self, input: &Array2<Self::Scalar>) -> Array2<Self::Scalar> {
+        input.mapv(|v| if v > T::zero() { T::one() } else { T::zero() })
+    }
+}

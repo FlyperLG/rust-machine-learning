@@ -3,7 +3,7 @@ mod dataloader;
 mod number_representations;
 
 use crate::{
-    architecture::{LinearLayer, Network, Sigmoid},
+    architecture::{LinearLayer, Network, ReLu, Sigmoid},
     dataloader::MnistDataloader,
     number_representations::Posit32,
 };
@@ -20,8 +20,8 @@ fn main() {
     let train_labels = one_hot_encode(&train_dataloader.train_labels.view(), 10);
 
     let network: Network<Posit32> = Network::new(vec![
-        Box::new(LinearLayer::new(28 * 28, 20, Box::new(Sigmoid::new()))),
-        Box::new(LinearLayer::new(20, 10, Box::new(Sigmoid::new()))),
+        Box::new(LinearLayer::new(28 * 28, 20, Box::new(ReLu::new()))),
+        Box::new(LinearLayer::new(20, 10, Box::new(ReLu::new()))),
     ]);
 
     train_model(train_data, train_labels, network, 0.001, 20, 64);

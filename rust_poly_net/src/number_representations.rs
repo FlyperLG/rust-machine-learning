@@ -1479,7 +1479,7 @@ impl ScalarOperand for Posit32 {}
 
 // Implement AIFloat (dummy, you may need to fill in methods if required)
 impl AIFloat for Posit32 {
-    /*fn exp(self) -> Self {
+    fn exp(self) -> Self {
         const LN2: Posit32 = Posit32 { bits: 1729683968 }; // from(0.6931472)
         const MAX_EXP_ARG: Posit32 = Posit32 { bits: 1765804032 }; // from(84.0)
         const MIN_EXP_ARG: Posit32 = Posit32 { bits: 2528997376 }; // from(-84.0)
@@ -1514,9 +1514,9 @@ impl AIFloat for Posit32 {
         let scale_factor = <Self as From<f32>>::from(2.0).powi(k);
         let result = exp_r * scale_factor;
         result
-    }*/
+    }
 
-    fn exp(self) -> Self {
+    /*fn exp(self) -> Self {
         if self.bits == Self::NAR.bits {
             return Self::NAR;
         }
@@ -1524,7 +1524,7 @@ impl AIFloat for Posit32 {
         let val_f32: f32 = self.into();
         let result_f32 = val_f32.exp();
         <Self as From<f32>>::from(result_f32)
-    }
+    }*/
 
     fn powi(self, n: i32) -> Self {
         if self.bits == Self::NAR.bits {
