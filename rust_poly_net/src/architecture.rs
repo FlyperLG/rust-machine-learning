@@ -181,3 +181,39 @@ impl<T: MlScalar> Activation for ReLu<T> {
         input.mapv(|v| if v > T::zero() { T::one() } else { T::zero() })
     }
 }
+
+pub struct HardSigmoid<T: MlScalar> {
+    _marker: PhantomData<T>,
+}
+
+impl<T: MlScalar> HardSigmoid<T> {
+    pub fn new() -> Self {
+        Self {
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T: MlScalar> Activation for HardSigmoid<T> {
+    type Scalar = T;
+
+    fn activate(&self, input: &Array2<Self::Scalar>) -> Array2<Self::Scalar> {
+        let slope = T::from(0.2).unwrap();
+        let offset = T::from(0.5).unwrap();
+        input.mapv(|v| {
+            let v = v.max(T::from(-2.5).unwrap()).min(T::from(2.5).unwrap());
+            (slope * v + offset).max(T::zero()).min(T::one())
+        })
+    }
+
+    fn derivative(&self, input: &Array2<Self::Scalar>) -> Array2<Self::Scalar> {
+        let activated_input = self.activate(input);
+        activated_input.mapv(|v| {
+            if v > T::zero() && v < T::one() {
+                T::from(0.2).unwrap()
+            } else {
+                T::zero()
+            }
+        })
+    }
+}

@@ -3,7 +3,7 @@ mod dataloader;
 mod number_representations;
 
 use crate::{
-    architecture::{LinearLayer, Network, ReLu, Sigmoid},
+    architecture::{HardSigmoid, LinearLayer, Network, ReLu, Sigmoid},
     dataloader::MnistDataloader,
     number_representations::Posit32,
 };
@@ -14,14 +14,14 @@ use rust_poly_net::{Float64, MlPosit, MlScalar};
 use std::time::Instant;
 
 fn main() {
-    let mut train_dataloader = MnistDataloader::<Posit32>::new("./data/mnist");
+    let mut train_dataloader = MnistDataloader::<Float64>::new("./data/mnist");
     train_dataloader.load_data().unwrap();
     let train_data = train_dataloader.train_data;
     let train_labels = one_hot_encode(&train_dataloader.train_labels.view(), 10);
 
-    let network: Network<Posit32> = Network::new(vec![
-        Box::new(LinearLayer::new(28 * 28, 20, Box::new(ReLu::new()))),
-        Box::new(LinearLayer::new(20, 10, Box::new(ReLu::new()))),
+    let network: Network<Float64> = Network::new(vec![
+        Box::new(LinearLayer::new(28 * 28, 20, Box::new(HardSigmoid::new()))),
+        Box::new(LinearLayer::new(20, 10, Box::new(HardSigmoid::new()))),
     ]);
 
     train_model(train_data, train_labels, network, 0.001, 20, 64);
