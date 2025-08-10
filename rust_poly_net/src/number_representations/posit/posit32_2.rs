@@ -1,53 +1,40 @@
-use std::cmp::Ordering;
-use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
+use std::{
+    cmp::Ordering,
+    fmt,
+    ops::{Add, AddAssign, Div, Mul, Neg, Rem, Sub, SubAssign},
+};
 
 use ndarray::ScalarOperand;
-use rust_poly_net::{AIFloat, MlScalar};
+use num_traits::{Num, NumCast, One, ToPrimitive, Zero};
+
+use crate::number_representations::{
+    core::{AIFloat, MlScalar},
+    posit::core::{DecodedPosit32, Posit, UnpackedPosit32},
+};
 
 #[derive(Debug, Clone, Copy)]
-pub struct PositV1<const N: usize, const ES: usize> {
+pub struct Posit32_2 {
     bits: u32,
 }
 
-#[derive(Debug)]
-struct DecodedPositV1 {
-    is_nar: bool,
-    is_zero: bool,
-    sign: u32,
-    scale: i32,
-    // Use a large integer to hold the fraction with its implicit '1' bit
-    // and provide headroom for shifting and rounding.
-    mantissa: u64,
-    frac_len: u32,
-}
+impl MlScalar for Posit32_2 {}
 
-#[derive(Debug)]
-struct UnpackedPositV1 {
-    sign: u32,
-    scale: i32,
-    mantissa: i128, // Using i128 to hold the large intermediate result
-}
+impl Posit<32, 2> for Posit32_2 {}
 
-impl<const N: usize, const ES: usize> PositV1<N, ES> {
-    // const BITS: usize = N;
-    const ES: usize = ES;
-    // const USEED: u32 = (1 << (1 << ES));
-
-    pub const ZERO: Self = PositV1 { bits: 0 };
-    pub const NAR: Self = PositV1 { bits: 1 << (N - 1) };
+impl Posit32_2 {
+    pub const ZERO: Self = Posit32_2 { bits: 0 };
+    pub const NAR: Self = Posit32_2 {
+        bits: 1 << (Self::N - 1),
+    };
 
     pub fn new(bits: u32) -> Self {
-        PositV1 { bits }
+        Posit32_2 { bits }
     }
-}
 
-pub type Posit32 = PositV1<32, 2>;
-
-impl Posit32 {
-    fn decode(&self) -> DecodedPositV1 {
+    fn decode(&self) -> DecodedPosit32 {
         // *** FIX 1: Correctly check for ZERO, not NAR twice ***
         if self.bits == Self::ZERO.bits {
-            return DecodedPositV1 {
+            return DecodedPosit32 {
                 is_nar: false,
                 is_zero: true,
                 sign: 0,
@@ -57,7 +44,7 @@ impl Posit32 {
             };
         }
         if self.bits == Self::NAR.bits {
-            return DecodedPositV1 {
+            return DecodedPosit32 {
                 is_nar: true,
                 is_zero: false,
                 sign: 0,
@@ -84,7 +71,7 @@ impl Posit32 {
             let num_ones = body.leading_ones();
             if num_ones >= 31 {
                 // maxpos
-                return DecodedPositV1 {
+                return DecodedPosit32 {
                     is_nar: false,
                     is_zero: false,
                     sign,
@@ -99,7 +86,7 @@ impl Posit32 {
             let num_zeros = body.leading_zeros();
             if num_zeros >= 30 {
                 // minpos
-                return DecodedPositV1 {
+                return DecodedPosit32 {
                     is_nar: false,
                     is_zero: false,
                     sign,
@@ -136,7 +123,7 @@ impl Posit32 {
         let frac_bits = (exp_frac_bits as u64) & frac_mask;
         let mantissa = (1u64 << frac_len) | frac_bits;
 
-        DecodedPositV1 {
+        DecodedPosit32 {
             is_nar: false,
             is_zero: false,
             sign,
@@ -146,7 +133,7 @@ impl Posit32 {
         }
     }
 
-    fn encode(unpacked: UnpackedPositV1) -> Self {
+    fn encode(unpacked: UnpackedPosit32) -> Self {
         if unpacked.mantissa == 0 {
             return Self::ZERO;
         }
@@ -207,9 +194,7 @@ impl Posit32 {
 
         // Round-to-nearest-even
         if (frac_plus_round & 1) != 0 {
-            if (frac_plus_round & 2) != 0
-                || (mantissa & ((1i128 << (shift_for_round - 1)) - 1)) != 0
-            {
+            if (frac_plus_round & 2) != 0 || (mantissa & ((1 << (shift_for_round - 1)) - 1)) != 0 {
                 frac_plus_round += 2;
             }
         }
@@ -246,7 +231,7 @@ impl Posit32 {
 
         let trunc_mantissa = (d.mantissa >> bits_to_chop) << bits_to_chop;
 
-        let unpacked = UnpackedPositV1 {
+        let unpacked = UnpackedPosit32 {
             sign: d.sign,
             scale: d.scale - d.frac_len as i32,
             mantissa: trunc_mantissa as i128,
@@ -281,7 +266,7 @@ impl Posit32 {
     }
 }
 
-impl From<f32> for Posit32 {
+impl From<f32> for Posit32_2 {
     fn from(value: f32) -> Self {
         if value == 0.0 {
             return Self::ZERO;
@@ -372,12 +357,12 @@ impl From<f32> for Posit32 {
     }
 }
 
-impl From<Posit32> for f32 {
-    fn from(p: Posit32) -> Self {
-        if p.bits == Posit32::ZERO.bits {
+impl From<Posit32_2> for f32 {
+    fn from(p: Posit32_2) -> Self {
+        if p.bits == Posit32_2::ZERO.bits {
             return 0.0;
         }
-        if p.bits == Posit32::NAR.bits {
+        if p.bits == Posit32_2::NAR.bits {
             return f32::NAN;
         }
 
@@ -418,10 +403,10 @@ impl From<Posit32> for f32 {
             k = -(num_zeros as i32);
         }
 
-        let scale = k * (1 << Posit32::ES);
+        let scale = k * (1 << Posit32_2::ES);
         let remaining_len = 32 - 1 - regime_len;
 
-        let es_len = std::cmp::min(Posit32::ES as u32, remaining_len);
+        let es_len = std::cmp::min(Posit32_2::ES as u32, remaining_len);
         let frac_len = remaining_len - es_len;
 
         // We are safe from the shift-overflow panic here because the minpos case (where remaining_len=0) was handled above.
@@ -452,7 +437,7 @@ impl From<Posit32> for f32 {
     }
 }
 
-impl Add for Posit32 {
+impl Add for Posit32_2 {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -504,7 +489,7 @@ impl Add for Posit32 {
         // It has no dependency on the original p1.sign.
         let result_sign = if result_mant < 0 { 1 } else { 0 };
 
-        let unpacked = UnpackedPositV1 {
+        let unpacked = UnpackedPosit32 {
             sign: result_sign,
             scale: result_scale - 96,
             mantissa: result_mant.abs(),
@@ -514,7 +499,7 @@ impl Add for Posit32 {
     }
 }
 
-impl Mul for Posit32 {
+impl Mul for Posit32_2 {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -535,7 +520,7 @@ impl Mul for Posit32 {
         let result_scale = p1.scale + p2.scale - p1.frac_len as i32 - p2.frac_len as i32;
         let result_mant = (p1.mantissa as i128) * (p2.mantissa as i128);
 
-        let unpacked = UnpackedPositV1 {
+        let unpacked = UnpackedPosit32 {
             sign: p1.sign ^ p2.sign,
             scale: result_scale,
             mantissa: result_mant,
@@ -545,7 +530,7 @@ impl Mul for Posit32 {
     }
 }
 
-impl Neg for Posit32 {
+impl Neg for Posit32_2 {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -558,7 +543,7 @@ impl Neg for Posit32 {
     }
 }
 
-impl Sub for Posit32 {
+impl Sub for Posit32_2 {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -567,7 +552,7 @@ impl Sub for Posit32 {
     }
 }
 
-impl Div for Posit32 {
+impl Div for Posit32_2 {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self::Output {
@@ -598,7 +583,7 @@ impl Div for Posit32 {
         // Shifting left by 96 bits gives us plenty of precision for the result.
         let result_mant = ((p1.mantissa as i128) << 96) / (p2.mantissa as i128);
 
-        let unpacked = UnpackedPositV1 {
+        let unpacked = UnpackedPosit32 {
             sign: p1.sign ^ p2.sign,
             // The pre-shift of 96 introduces a scale factor of 2^96. We must subtract
             // this from the final scale to compensate.
@@ -610,7 +595,7 @@ impl Div for Posit32 {
     }
 }
 
-impl Rem for Posit32 {
+impl Rem for Posit32_2 {
     type Output = Self;
 
     /// Follows the formula: `a % b = a - trunc(a / b) * b`
@@ -632,7 +617,7 @@ impl Rem for Posit32 {
     }
 }
 
-impl<const N: usize, const ES: usize> PartialEq for PositV1<N, ES> {
+impl PartialEq for Posit32_2 {
     fn eq(&self, other: &Self) -> bool {
         if self.bits == Self::NAR.bits || other.bits == Self::NAR.bits {
             return false;
@@ -642,13 +627,181 @@ impl<const N: usize, const ES: usize> PartialEq for PositV1<N, ES> {
     }
 }
 
-impl<const N: usize, const ES: usize> PartialOrd for PositV1<N, ES> {
+impl PartialOrd for Posit32_2 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.bits == Self::NAR.bits || other.bits == Self::NAR.bits {
             return None;
         }
 
         Some((self.bits as i32).cmp(&(other.bits as i32)))
+    }
+}
+
+impl fmt::Display for Posit32_2 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Display as f32 for readability
+        let val: f32 = (*self).into();
+        write!(f, "{}", val)
+    }
+}
+
+// Implement AddAssign
+impl AddAssign for Posit32_2 {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+// Implement SubAssign
+impl SubAssign for Posit32_2 {
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+
+impl NumCast for Posit32_2 {
+    fn from<T: ToPrimitive>(n: T) -> Option<Self> {
+        n.to_f32().map(<Posit32_2 as From<f32>>::from)
+    }
+}
+
+// Implement Zero and One for Num
+impl Zero for Posit32_2 {
+    fn zero() -> Self {
+        Posit32_2::ZERO
+    }
+    fn is_zero(&self) -> bool {
+        self.bits == Posit32_2::ZERO.bits
+    }
+}
+
+impl One for Posit32_2 {
+    fn one() -> Self {
+        <Posit32_2 as From<f32>>::from(1.0)
+    }
+}
+
+// Implement Num
+impl Num for Posit32_2 {
+    type FromStrRadixErr = <f32 as Num>::FromStrRadixErr;
+    fn from_str_radix(s: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+        f32::from_str_radix(s, radix).map(<Posit32_2 as From<f32>>::from)
+    }
+}
+
+impl ToPrimitive for Posit32_2 {
+    fn to_i64(&self) -> Option<i64> {
+        <f32 as From<Posit32_2>>::from(*self).to_i64()
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        <f32 as From<Posit32_2>>::from(*self).to_u64()
+    }
+    fn to_f64(&self) -> Option<f64> {
+        <f32 as From<Posit32_2>>::from(*self).to_f64()
+    }
+}
+
+impl ScalarOperand for Posit32_2 {}
+
+impl AIFloat for Posit32_2 {
+    fn exp(self) -> Self {
+        const LN2_F64: f64 = core::f64::consts::LN_2;
+        const MAX_EXP_ARG: Posit32_2 = Posit32_2 { bits: 1765804032 }; // from(84.0)
+        const MIN_EXP_ARG: Posit32_2 = Posit32_2 { bits: 2528997376 }; // from(-84.0)
+
+        if self.bits == Self::NAR.bits {
+            return Self::NAR;
+        } else if self.bits == Self::ZERO.bits {
+            return <Self as From<f32>>::from(1.0);
+        } else if self > MAX_EXP_ARG {
+            return Posit32_2::new(0x7FFF_FFFF);
+        } else if self < MIN_EXP_ARG {
+            return Self::ZERO;
+        }
+
+        let self_f64: f64 = <f32 as From<Posit32_2>>::from(self) as f64;
+        let k = (self_f64 / LN2_F64).round() as i32;
+        let r_f64 = self_f64 - (k as f64 * LN2_F64);
+        let r: Posit32_2 = <Self as From<f32>>::from(r_f64 as f32);
+
+        let mut exp_r = <Self as From<f32>>::from(1.0);
+        let mut term = <Self as From<f32>>::from(1.0);
+        for i in 1..=15 {
+            let i_posit = <Self as From<f32>>::from(i as f32);
+            term = term * r / i_posit;
+            let prev_sum = exp_r;
+            exp_r = exp_r + term;
+            if exp_r.bits == prev_sum.bits {
+                break;
+            }
+        }
+
+        let scale_factor = <Self as From<f32>>::from(2.0).powi(k);
+        let result = exp_r * scale_factor;
+        result
+    }
+
+    fn powi(self, n: i32) -> Self {
+        if self.bits == Self::NAR.bits {
+            return Self::NAR;
+        }
+
+        if n == 0 {
+            return <Self as From<f32>>::from(1.0);
+        } else if self.bits == <Self as From<f32>>::from(1.0).bits {
+            return self;
+        } else if n == 1 {
+            return self;
+        } else if self.bits == Self::ZERO.bits {
+            return if n < 0 { Self::NAR } else { Self::ZERO };
+        }
+
+        let mut res = <Self as From<f32>>::from(1.0);
+        let mut base = self;
+        let mut exp = n;
+        if exp < 0 {
+            base = <Self as From<f32>>::from(1.0) / base;
+            exp = -exp;
+        }
+
+        while exp > 0 {
+            if exp % 2 == 1 {
+                res = res * base;
+            }
+            base = base * base;
+            exp /= 2;
+        }
+
+        res
+    }
+
+    fn max(self, other: Self) -> Self {
+        if self.bits == Self::NAR.bits {
+            return other;
+        } else if other.bits == Self::NAR.bits {
+            return self;
+        }
+
+        if (self.bits as i32) > (other.bits as i32) {
+            self
+        } else {
+            other
+        }
+    }
+
+    fn min(self, other: Self) -> Self {
+        if self.bits == Self::NAR.bits {
+            return other;
+        } else if other.bits == Self::NAR.bits {
+            return self;
+        }
+
+        if (self.bits as i32) < (other.bits as i32) {
+            self
+        } else {
+            other
+        }
     }
 }
 
@@ -660,7 +813,7 @@ mod tests {
 
     /// Helper function to compare your f32->posit conversion against the reference implementation.
     fn validate_f32_to_posit(value: f32) {
-        let my_posit = <Posit32 as From<f32>>::from(value);
+        let my_posit = <Posit32_2 as From<f32>>::from(value);
         let reference_posit = P32::from_f32(value);
 
         if my_posit.bits != reference_posit.to_bits() {
@@ -726,7 +879,7 @@ mod tests {
 
     /// Helper function to compare your posit->f32 conversion against the reference.
     fn validate_posit_to_f32(p_bits: u32) {
-        let my_posit = Posit32::new(p_bits);
+        let my_posit = Posit32_2::new(p_bits);
         let my_f32: f32 = my_posit.into();
 
         let reference_posit = P32::from_bits(p_bits);
@@ -780,8 +933,8 @@ mod tests {
     }
 
     fn validate_add(v1: f32, v2: f32) {
-        let p1 = <Posit32 as From<f32>>::from(v1);
-        let p2 = <Posit32 as From<f32>>::from(v2);
+        let p1 = <Posit32_2 as From<f32>>::from(v1);
+        let p2 = <Posit32_2 as From<f32>>::from(v2);
         let my_sum = p1 + p2;
 
         let ref_p1 = P32::from_f32(v1);
@@ -813,8 +966,8 @@ mod tests {
     }
 
     fn validate_mul(v1: f32, v2: f32) {
-        let p1 = <Posit32 as From<f32>>::from(v1);
-        let p2 = <Posit32 as From<f32>>::from(v2);
+        let p1 = <Posit32_2 as From<f32>>::from(v1);
+        let p2 = <Posit32_2 as From<f32>>::from(v2);
         let my_product = p1 * p2;
 
         let ref_p1 = P32::from_f32(v1);
@@ -868,8 +1021,8 @@ mod tests {
     }
 
     fn validate_sub(v1: f32, v2: f32) {
-        let p1 = <Posit32 as From<f32>>::from(v1);
-        let p2 = <Posit32 as From<f32>>::from(v2);
+        let p1 = <Posit32_2 as From<f32>>::from(v1);
+        let p2 = <Posit32_2 as From<f32>>::from(v2);
         let my_diff = p1 - p2;
 
         let ref_p1 = P32::from_f32(v1);
@@ -895,8 +1048,8 @@ mod tests {
     }
 
     fn validate_div(v1: f32, v2: f32) {
-        let p1 = <Posit32 as From<f32>>::from(v1);
-        let p2 = <Posit32 as From<f32>>::from(v2);
+        let p1 = <Posit32_2 as From<f32>>::from(v1);
+        let p2 = <Posit32_2 as From<f32>>::from(v2);
         let my_quot = p1 / p2;
 
         let ref_p1 = P32::from_f32(v1);
@@ -943,8 +1096,8 @@ mod tests {
     }
 
     fn validate_rem(v1: f32, v2: f32) {
-        let p1 = <Posit32 as From<f32>>::from(v1);
-        let p2 = <Posit32 as From<f32>>::from(v2);
+        let p1 = <Posit32_2 as From<f32>>::from(v1);
+        let p2 = <Posit32_2 as From<f32>>::from(v2);
         let my_rem = p1 % p2; // Using the '%' operator
 
         let expected_f32 = v1 % v2;
@@ -956,7 +1109,7 @@ mod tests {
             println!(
                 "My Rem:       {:#034b} ({})",
                 my_rem.bits,
-                <f32 as From<Posit32>>::from(my_rem)
+                <f32 as From<Posit32_2>>::from(my_rem)
             );
             println!(
                 "Expected Rem: {:#034b} ({})",
@@ -994,9 +1147,9 @@ mod tests {
         validate_rem(10.0, 1.0); // 0.0
 
         // Special values
-        let nar = <Posit32 as From<f32>>::from(f32::NAN);
-        let zero = <Posit32 as From<f32>>::from(0.0);
-        let p10 = <Posit32 as From<f32>>::from(10.0);
+        let nar = <Posit32_2 as From<f32>>::from(f32::NAN);
+        let zero = <Posit32_2 as From<f32>>::from(0.0);
+        let p10 = <Posit32_2 as From<f32>>::from(10.0);
 
         assert_eq!((p10 % zero).bits, nar.bits, "10 % 0 should be NaR");
         assert_eq!((p10 % nar).bits, nar.bits, "10 % NaR should be NaR");
@@ -1005,7 +1158,7 @@ mod tests {
     }
 
     fn validate_neg(v: f32) {
-        let p = <Posit32 as From<f32>>::from(v);
+        let p = <Posit32_2 as From<f32>>::from(v);
         let my_neg = -p;
 
         let ref_p = P32::from_f32(v);
@@ -1043,7 +1196,7 @@ mod tests {
     }
 
     fn validate_exp(v: f32, expected: f32, tolerance: f32) {
-        let p: PositV1<32, 2> = <Posit32 as From<f32>>::from(v);
+        let p = <Posit32_2 as From<f32>>::from(v);
         let my_exp_p = p.exp();
         let my_exp_f32: f32 = my_exp_p.into();
 
@@ -1080,27 +1233,27 @@ mod tests {
         validate_exp(-2.5, 0.082085, 1e-6);
 
         // Test overflow/underflow
-        let maxpos = <f32 as From<Posit32>>::from(Posit32::new(0x7FFFFFFF));
+        let maxpos = <f32 as From<Posit32_2>>::from(Posit32_2::new(0x7FFFFFFF));
         validate_exp(88.0, maxpos, 1e-7); // Should clamp to maxpos
         validate_exp(-88.0, 0.0, 1e-7); // Should be 0
 
         // Test special values
-        let nar = Posit32::NAR;
-        let p_nar = <Posit32 as From<f32>>::from(f32::NAN);
+        let nar = Posit32_2::NAR;
+        let p_nar = <Posit32_2 as From<f32>>::from(f32::NAN);
         assert_eq!(p_nar.exp().bits, nar.bits);
     }
 
     fn validate_powi(v: f32, n: i32) {
-        let p = <Posit32 as From<f32>>::from(v);
+        let p = <Posit32_2 as From<f32>>::from(v);
         let my_pow = p.powi(n);
-        let expected_pow = <Posit32 as From<f32>>::from(v.powi(n));
+        let expected_pow = <Posit32_2 as From<f32>>::from(v.powi(n));
 
         if my_pow.bits != expected_pow.bits {
             println!("\n powi test failed for {}^{}", v, n);
             println!(
                 "My pow:       {:#034b} ({})",
                 my_pow.bits,
-                <f32 as From<Posit32>>::from(my_pow)
+                <f32 as From<Posit32_2>>::from(my_pow)
             );
             println!("Expected pow: {:#034b} ({})", expected_pow.bits, v.powi(n));
         }
@@ -1126,10 +1279,10 @@ mod tests {
     }
 
     fn validate_max(v1: f32, v2: f32) {
-        let p1 = <Posit32 as From<f32>>::from(v1);
-        let p2 = <Posit32 as From<f32>>::from(v2);
+        let p1 = <Posit32_2 as From<f32>>::from(v1);
+        let p2: Posit32_2 = <Posit32_2 as From<f32>>::from(v2);
         let my_max = AIFloat::max(p1, p2);
-        let expected_max = <Posit32 as From<f32>>::from(v1.max(v2));
+        let expected_max = <Posit32_2 as From<f32>>::from(v1.max(v2));
 
         assert_eq!(
             my_max.bits, expected_max.bits,
@@ -1154,10 +1307,10 @@ mod tests {
     }
 
     fn validate_min(v1: f32, v2: f32) {
-        let p1 = <Posit32 as From<f32>>::from(v1);
-        let p2 = <Posit32 as From<f32>>::from(v2);
+        let p1 = <Posit32_2 as From<f32>>::from(v1);
+        let p2 = <Posit32_2 as From<f32>>::from(v2);
         let my_min = AIFloat::min(p1, p2);
-        let expected_min = <Posit32 as From<f32>>::from(v1.min(v2));
+        let expected_min = <Posit32_2 as From<f32>>::from(v1.min(v2));
 
         assert_eq!(
             my_min.bits, expected_min.bits,
@@ -1182,18 +1335,18 @@ mod tests {
     }
 
     fn validate_abs(v: f32) {
-        let p = <Posit32 as From<f32>>::from(v);
+        let p = <Posit32_2 as From<f32>>::from(v);
         let my_abs = p.abs();
 
         // The expected result is the posit of the f32's absolute value.
-        let expected_abs = <Posit32 as From<f32>>::from(v.abs());
+        let expected_abs = <Posit32_2 as From<f32>>::from(v.abs());
 
         if my_abs.bits != expected_abs.bits {
             println!("\nabs test failed for {}", v);
             println!(
                 "My abs:       {:#034b} ({})",
                 my_abs.bits,
-                <f32 as From<Posit32>>::from(my_abs)
+                <f32 as From<Posit32_2>>::from(my_abs)
             );
             println!("Expected abs: {:#034b} ({})", expected_abs.bits, v.abs());
         }
@@ -1220,23 +1373,23 @@ mod tests {
         validate_abs(-2.6815616e36); // -maxpos
 
         // Special value NaR
-        let nar = Posit32::NAR;
+        let nar = Posit32_2::NAR;
         assert_eq!(nar.abs().bits, nar.bits, "abs(NaR) should be NaR");
     }
 
     fn validate_round(v: f32) {
-        let p = <Posit32 as From<f32>>::from(v);
+        let p = <Posit32_2 as From<f32>>::from(v);
         let my_round = p.round();
 
         // The expected result is the posit of the f32's rounded value.
-        let expected_round = <Posit32 as From<f32>>::from(v.round());
+        let expected_round = <Posit32_2 as From<f32>>::from(v.round());
 
         if my_round.bits != expected_round.bits {
             println!("\nround test failed for {}", v);
             println!(
                 "My round:     {:#034b} ({})",
                 my_round.bits,
-                <f32 as From<Posit32>>::from(my_round)
+                <f32 as From<Posit32_2>>::from(my_round)
             );
             println!(
                 "Expected:     {:#034b} ({})",
@@ -1282,21 +1435,21 @@ mod tests {
         validate_round(4323.89);
 
         // Special value NaR
-        let nar = Posit32::NAR;
+        let nar = Posit32_2::NAR;
         assert_eq!(nar.round().bits, nar.bits, "round(NaR) should be NaR");
     }
 
     #[test]
     fn test_posit_ordering() {
-        let p_minus_10 = <Posit32 as From<f32>>::from(-10.0);
-        let p_minus_2 = <Posit32 as From<f32>>::from(-2.0);
-        let p_zero = <Posit32 as From<f32>>::from(0.0);
-        let p_one = <Posit32 as From<f32>>::from(1.0);
-        let p_five = <Posit32 as From<f32>>::from(5.0);
-        let nar = Posit32::NAR;
+        let p_minus_10 = <Posit32_2 as From<f32>>::from(-10.0);
+        let p_minus_2 = <Posit32_2 as From<f32>>::from(-2.0);
+        let p_zero = <Posit32_2 as From<f32>>::from(0.0);
+        let p_one = <Posit32_2 as From<f32>>::from(1.0);
+        let p_five = <Posit32_2 as From<f32>>::from(5.0);
+        let nar = Posit32_2::NAR;
 
         // --- Test PartialEq (this part is correct) ---
-        assert!(p_five == <Posit32 as From<f32>>::from(5.0));
+        assert!(p_five == <Posit32_2 as From<f32>>::from(5.0));
         assert!(p_five != p_one);
         assert!(nar != nar);
         assert!(p_five != nar);
@@ -1312,7 +1465,7 @@ mod tests {
         values.sort_by(|a, b| {
             // This is the total ordering logic from your old `Ord` trait.
             // We define NaR to be the greatest value for sorting purposes.
-            match (a.bits == Posit32::NAR.bits, b.bits == Posit32::NAR.bits) {
+            match (a.bits == Posit32_2::NAR.bits, b.bits == Posit32_2::NAR.bits) {
                 (true, true) => Ordering::Equal,
                 (true, false) => Ordering::Greater,
                 (false, true) => Ordering::Less,
@@ -1338,18 +1491,18 @@ mod tests {
     }
 
     fn validate_trunc(v: f32) {
-        let p = <Posit32 as From<f32>>::from(v);
+        let p = <Posit32_2 as From<f32>>::from(v);
         let my_trunc = p.trunc();
 
         // The expected result is the posit of the f32's truncated value.
-        let expected_trunc = <Posit32 as From<f32>>::from(v.trunc());
+        let expected_trunc = <Posit32_2 as From<f32>>::from(v.trunc());
 
         if my_trunc.bits != expected_trunc.bits {
             println!("\ntrunc test failed for {}", v);
             println!(
                 "My trunc:     {:#034b} ({})",
                 my_trunc.bits,
-                <f32 as From<Posit32>>::from(my_trunc)
+                <f32 as From<Posit32_2>>::from(my_trunc)
             );
             println!(
                 "Expected:     {:#034b} ({})",
@@ -1392,202 +1545,13 @@ mod tests {
         validate_trunc(0.0);
 
         // === Special Values ===
-        let nar = Posit32::NAR;
+        let nar = Posit32_2::NAR;
         assert_eq!(nar.trunc().bits, nar.bits, "trunc(NaR) should be NaR");
 
         // === Boundary Values ===
-        let maxpos = <f32 as From<Posit32>>::from(Posit32::new(0x7FFFFFFF));
-        let minpos = <f32 as From<Posit32>>::from(Posit32::new(0x00000001));
+        let maxpos = <f32 as From<Posit32_2>>::from(Posit32_2::new(0x7FFFFFFF));
+        let minpos = <f32 as From<Posit32_2>>::from(Posit32_2::new(0x00000001));
         validate_trunc(maxpos); // maxpos is an integer, should not change.
         validate_trunc(minpos); // minpos is between 0 and 1, should become 0.
     }
 }
-
-use num_traits::{Num, NumCast, One, ToPrimitive, Zero};
-use std::ops::{AddAssign, SubAssign};
-use std::{fmt, result};
-
-// Implement Display for PositV1<32, 2>
-impl fmt::Display for PositV1<32, 2> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Display as f32 for readability
-        let val: f32 = (*self).into();
-        write!(f, "{}", val)
-    }
-}
-
-// Implement AddAssign
-impl AddAssign for Posit32 {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
-    }
-}
-
-// Implement SubAssign
-impl SubAssign for Posit32 {
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = *self - rhs;
-    }
-}
-
-// Implement NumCast
-impl NumCast for Posit32 {
-    fn from<T: ToPrimitive>(n: T) -> Option<Self> {
-        n.to_f32().map(<Posit32 as From<f32>>::from)
-    }
-}
-
-// Implement Zero and One for Num
-impl Zero for Posit32 {
-    fn zero() -> Self {
-        Posit32::ZERO
-    }
-    fn is_zero(&self) -> bool {
-        self.bits == Posit32::ZERO.bits
-    }
-}
-
-impl One for Posit32 {
-    fn one() -> Self {
-        <Posit32 as From<f32>>::from(1.0)
-    }
-}
-
-// Implement Num
-impl Num for Posit32 {
-    type FromStrRadixErr = <f32 as Num>::FromStrRadixErr;
-    fn from_str_radix(s: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
-        f32::from_str_radix(s, radix).map(<Posit32 as From<f32>>::from)
-    }
-}
-
-impl ToPrimitive for Posit32 {
-    fn to_i64(&self) -> Option<i64> {
-        <f32 as From<Posit32>>::from(*self).to_i64()
-    }
-
-    fn to_u64(&self) -> Option<u64> {
-        <f32 as From<Posit32>>::from(*self).to_u64()
-    }
-    fn to_f64(&self) -> Option<f64> {
-        <f32 as From<Posit32>>::from(*self).to_f64()
-    }
-}
-
-// Implement ScalarOperand
-impl ScalarOperand for Posit32 {}
-
-// Implement AIFloat (dummy, you may need to fill in methods if required)
-impl AIFloat for Posit32 {
-    fn exp(self) -> Self {
-        const LN2: Posit32 = Posit32 { bits: 1729683968 }; // from(0.6931472)
-        const MAX_EXP_ARG: Posit32 = Posit32 { bits: 1765804032 }; // from(84.0)
-        const MIN_EXP_ARG: Posit32 = Posit32 { bits: 2528997376 }; // from(-84.0)
-
-        if self.bits == Self::NAR.bits {
-            return Self::NAR;
-        } else if self.bits == Self::ZERO.bits {
-            return <Self as From<f32>>::from(1.0);
-        } else if self > MAX_EXP_ARG {
-            return Posit32::new(0x7FFF_FFFF);
-        } else if self < MIN_EXP_ARG {
-            return Self::ZERO;
-        }
-
-        let y = self / LN2;
-        let k_posit = y.round();
-        let k = <f32 as From<Posit32>>::from(k_posit) as i32;
-        let r = self - (k_posit * LN2);
-
-        let mut exp_r = <Self as From<f32>>::from(1.0);
-        let mut term = <Self as From<f32>>::from(1.0);
-        for i in 1..=15 {
-            let i_posit = <Self as From<f32>>::from(i as f32);
-            term = term * r / i_posit;
-            let prev_sum = exp_r;
-            exp_r = exp_r + term;
-            if exp_r.bits == prev_sum.bits {
-                break;
-            }
-        }
-
-        let scale_factor = <Self as From<f32>>::from(2.0).powi(k);
-        let result = exp_r * scale_factor;
-        result
-    }
-
-    /*fn exp(self) -> Self {
-        if self.bits == Self::NAR.bits {
-            return Self::NAR;
-        }
-
-        let val_f32: f32 = self.into();
-        let result_f32 = val_f32.exp();
-        <Self as From<f32>>::from(result_f32)
-    }*/
-
-    fn powi(self, n: i32) -> Self {
-        if self.bits == Self::NAR.bits {
-            return Self::NAR;
-        }
-
-        if n == 0 {
-            return <Self as From<f32>>::from(1.0);
-        } else if self.bits == <Self as From<f32>>::from(1.0).bits {
-            return self;
-        } else if n == 1 {
-            return self;
-        } else if self.bits == Self::ZERO.bits {
-            return if n < 0 { Self::NAR } else { Self::ZERO };
-        }
-
-        let mut res = <Self as From<f32>>::from(1.0);
-        let mut base = self;
-        let mut exp = n;
-        if exp < 0 {
-            base = <Self as From<f32>>::from(1.0) / base;
-            exp = -exp;
-        }
-
-        while exp > 0 {
-            if exp % 2 == 1 {
-                res = res * base;
-            }
-            base = base * base;
-            exp /= 2;
-        }
-
-        res
-    }
-
-    fn max(self, other: Self) -> Self {
-        if self.bits == Self::NAR.bits {
-            return other;
-        } else if other.bits == Self::NAR.bits {
-            return self;
-        }
-
-        if (self.bits as i32) > (other.bits as i32) {
-            self
-        } else {
-            other
-        }
-    }
-
-    fn min(self, other: Self) -> Self {
-        if self.bits == Self::NAR.bits {
-            return other;
-        } else if other.bits == Self::NAR.bits {
-            return self;
-        }
-
-        if (self.bits as i32) < (other.bits as i32) {
-            self
-        } else {
-            other
-        }
-    }
-}
-
-// Implement MlScalar
-impl MlScalar for Posit32 {}
