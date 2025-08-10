@@ -27,11 +27,11 @@ macro_rules! create_benchmark_for_type {
                 // IMPORTANT: We print the accuracy here. Criterion measures time,
                 // but we need to see the accuracy to know if the time is meaningful.
                 // This output will appear in the console when you run `cargo bench`.
-                println!(
+                /*println!(
                     "  -> Accuracy for {}: {:.2}%",
                     stringify!($type_name),
                     accuracy * 100.0
-                );
+                );*/
             })
         });
         group.finish();

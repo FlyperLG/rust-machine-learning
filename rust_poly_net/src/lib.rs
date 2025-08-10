@@ -52,7 +52,7 @@ fn train_model<T: MlScalar>(
     for epoch in 0..epochs {
         let mut epoch_loss = T::zero();
         let mut num_batches = 0;
-        println!("Starting epoch {}/{} now.", epoch + 1, epochs);
+        // println!("Starting epoch {}/{} now.", epoch + 1, epochs);
         let epoch_timer = Instant::now();
         for i in (0..num_samples).step_by(batch_size) {
             let end = (i + batch_size).min(num_samples);
@@ -70,13 +70,13 @@ fn train_model<T: MlScalar>(
         }
 
         let duration = epoch_timer.elapsed();
-        println!(
+        /*println!(
             "Epoch: {}/{} ==== Average loss: {} ==== Time taken: {:?}",
             epoch + 1,
             epochs,
             epoch_loss / T::from(num_batches).unwrap(),
             duration
-        );
+        );*/
     }
 
     let (final_activations, _) = model.forward(&x_test.view());
@@ -105,11 +105,11 @@ fn train_model<T: MlScalar>(
     }
 
     let accuracy = correct_predictions as f64 / labels_test.nrows() as f64;
-    println!(
+    /*println!(
         "Final accuracy for type {}: {:.2}%",
         std::any::type_name::<T>(),
         accuracy * 100.0
-    );
+    );*/
     accuracy
 }
 
