@@ -118,7 +118,7 @@ pub fn run_training_for_type<T: MlScalar>() -> f64 {
     // to keep the benchmark runtime reasonable.
     const NUM_TRAIN_SAMPLES: Option<usize> = None;
     const NUM_TEST_SAMPLES: Option<usize> = None;
-    const EPOCHS: i32 = 8; // Keep this low for benchmarking
+    const EPOCHS: i32 = 25; // Keep this low for benchmarking
 
     // --- Load Data ---
     let mut dataloader =
