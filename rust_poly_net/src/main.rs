@@ -11,6 +11,18 @@ use rust_poly_net::{
 };
 use serde::Serialize;
 
+fn main() {
+    train_basic_network();
+    // performance_benchmark();
+}
+
+fn train_basic_network() {
+    // This function is a placeholder for the actual training logic.
+    // It should return the accuracy of the trained model.
+    let result = run_training_for_type::<f32>();
+    println!("Training completed with accuracy: {:.2}%", result * 100.0);
+}
+
 #[derive(Serialize)]
 struct TypeResult {
     type_name: String,
@@ -18,22 +30,7 @@ struct TypeResult {
     accuracies: Vec<f64>,
 }
 
-fn run_and_send_results<T: MlScalar + Send + 'static>(
-    type_name: &'static str,
-    iterations: u32,
-    sender: mpsc::Sender<(String, Vec<f64>)>,
-) {
-    let mut accuracies = Vec::new();
-    for i in 0..iterations {
-        // You could print here to see interleaved execution, but it might be messy.
-        // println!("Running iter {} for {}", i + 1, type_name);
-        accuracies.push(run_training_for_type::<T>());
-    }
-    // Send the final collected accuracies back to the main thread.
-    sender.send((type_name.to_string(), accuracies)).unwrap();
-}
-
-fn main() {
+fn performance_benchmark() {
     let iterations = 5;
 
     // Create a multi-producer, single-consumer channel for results.
@@ -107,4 +104,19 @@ fn main() {
         .expect("Failed to write to file.");
 
     println!("Parallel results have been written to training_results_parallel.json");
+}
+
+fn run_and_send_results<T: MlScalar + Send + 'static>(
+    type_name: &'static str,
+    iterations: u32,
+    sender: mpsc::Sender<(String, Vec<f64>)>,
+) {
+    let mut accuracies = Vec::new();
+    for i in 0..iterations {
+        // You could print here to see interleaved execution, but it might be messy.
+        // println!("Running iter {} for {}", i + 1, type_name);
+        accuracies.push(run_training_for_type::<T>());
+    }
+    // Send the final collected accuracies back to the main thread.
+    sender.send((type_name.to_string(), accuracies)).unwrap();
 }
