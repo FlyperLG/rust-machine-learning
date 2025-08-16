@@ -2,11 +2,11 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
 use rust_poly_net::number_representations::{
-    float::f16::MLf16, // Assuming you have an f32 wrapper
+    float::f16::MLf16,
     posit::{posit16_1::Posit16_1, posit16_2::Posit16_2, posit32_2::Posit32_2},
     softposit::{softposit16_1::Softposit16_1, softposit32_2::Softposit32_2},
 };
-use rust_poly_net::run_training_for_type; // Use your project name
+use rust_poly_net::run_training_for_type;
 
 macro_rules! create_benchmark_for_type {
     ($c:expr, $type_name:ident, $type:ty) => {
@@ -16,22 +16,10 @@ macro_rules! create_benchmark_for_type {
         group.sample_size(25);
 
         group.bench_function("train_mnist", |b| {
-            // b.iter runs the closure multiple times and measures its performance.
-            // Inside, we call our refactored training function.
             b.iter(|| {
-                // black_box prevents the compiler from optimizing away the function call
-                // if it thinks the return value is unused.
                 let accuracy = run_training_for_type::<$type>();
+                // black_box prevents the compiler from optimizing away the function call
                 black_box(accuracy);
-
-                // IMPORTANT: We print the accuracy here. Criterion measures time,
-                // but we need to see the accuracy to know if the time is meaningful.
-                // This output will appear in the console when you run `cargo bench`.
-                /*println!(
-                    "  -> Accuracy for {}: {:.2}%",
-                    stringify!($type_name),
-                    accuracy * 100.0
-                );*/
             })
         });
         group.finish();
